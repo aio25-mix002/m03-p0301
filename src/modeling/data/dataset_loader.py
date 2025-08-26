@@ -69,7 +69,7 @@ def transform_data(data):
     # print first 3 preprocessed samples
     for sample in preprocessed_samples[:3]:
         Logger.info(f"Label: {sample.label}")
-        Logger.info("Text:", sample.text)
+        Logger.info(f"Text: {sample.text}")
         Logger.info("#" * 20 + "\n")
 
     return preprocessed_samples
