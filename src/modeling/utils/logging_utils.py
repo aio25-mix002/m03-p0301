@@ -28,7 +28,7 @@ class LoggingService:
             logger.handlers.clear()
 
         # File handler
-        file_handler = logging.FileHandler(log_file, "w", "utf-8")
+        file_handler = logging.FileHandler(log_file, "a", "utf-8")
         file_formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
         file_handler.setFormatter(file_formatter)
         logger.addHandler(file_handler)
