@@ -1,0 +1,49 @@
+[project]
+name = "mix002"
+version = "0.0.1"
+description = "Smart topic classification"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "datasets>=4.0.0",
+    "matplotlib>=3.10.3",
+    "mlflow>=3.1.4",
+    "numpy>=2.3.2",
+    "pandas>=2.3.1",
+    "pydantic-settings>=2.10.1",
+    "pyyaml>=6.0.2",
+    "scikit-learn>=1.6.1",
+    "seaborn>=0.13.2",
+    "streamlit>=1.47.1",
+    "torch==2.6.0",
+    "torchaudio==2.6.0",
+    "torchvision==0.21.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.4",
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu124", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchaudio = [
+  { index = "pytorch-cu124", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu124", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.setuptools.packages.find]
+where = ["src", "scripts"]

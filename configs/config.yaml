@@ -1,0 +1,26 @@
+# Random seed for reproducibility
+random_state: 42
+
+# Data configuration
+data:
+    # External data from third-party sources.
+    external_dir: data/external
+    external_huggingface_dir: data/external/huggingface
+
+    # Your own data
+    raw_dir: data/raw
+
+    # Intermediate data that has been transformed.
+    interim_dir: data/interim
+
+    # The final, canonical data sets for modeling.
+    processed_dir: data/processed
+
+# Sampling configuration
+# sampling:
+#     n_samples: 1000
+#     label_filter: ["astro-ph", "cond-mat", "cs", "math", "physics"]
+
+# Training configuration
+train:
+    test_size: 0.2
