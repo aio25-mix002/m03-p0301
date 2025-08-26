@@ -35,7 +35,7 @@ def extract_samples(data: DatasetDict) -> list:
 
     for sample in samples[:3]:
         Logger.info(f"Category: {sample['categories']}")
-        Logger.info("Abstract:", sample["abstract"])
+        Logger.info(f"Abstract: {sample['abstract']}")
         Logger.info("#" * 20 + "\n")
 
     return samples
