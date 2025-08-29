@@ -16,10 +16,13 @@ data:
     # The final, canonical data sets for modeling.
     processed_dir: data/processed
 
+    # The directory for storing experiment results and reports
+    experiments_dir: experiments
+
 # Sampling configuration
-# sampling:
-#     n_samples: 1000
-#     label_filter: ["astro-ph", "cond-mat", "cs", "math", "physics"]
+sampling:
+    default_top_n: 1000
+    default_topics: ["astro-ph", "cond-mat", "cs", "math", "physics"]
 
 # Training configuration
 train:

@@ -1,8 +1,7 @@
-from app import startup as Startup
 import streamlit as st
-from modeling.utils.logging_utils import logger as Logger
-from app.routes import Routes
-
+from src.modeling.utils.logging_utils import logger as Logger
+from src.app.routes import Routes
+from src.app import startup as Startup
 
 def main():
     # Configure the page layout
