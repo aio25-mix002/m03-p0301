@@ -137,13 +137,8 @@ if st.button(
             )
             cm_figures.append(fig)
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        for i in range(0, len(cm_figures), 3):
-            st.pyplot(cm_figures[i])
-    with col2:
-        for i in range(1, len(cm_figures), 3):
-            st.pyplot(cm_figures[i])
-    with col3:
-        for i in range(2, len(cm_figures), 3):
-            st.pyplot(cm_figures[i])
+    num_columns = 3 if len(cm_figures) >= 3 else len(cm_figures)
+    columns = st.columns(num_columns)
+    for idx, fig in enumerate(cm_figures):
+        with columns[idx % num_columns]:
+            st.pyplot(fig)
