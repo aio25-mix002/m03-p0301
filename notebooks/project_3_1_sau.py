@@ -838,7 +838,7 @@ if 'compare_confusions' not in globals():
         plt.show()
 
 
-# 5) GIỮ LẠI KHỐI VẼ TRƯỚC/SAU CÂN BẰNG (KNN/DT/NB)
+# 5) VẼ CHARTS
 # ====== VẼ KNN ======
 if 'knn_bow_labels_pre' in globals():
     compare_confusions(y_test, knn_bow_labels_pre, knn_bow_labels,
@@ -939,3 +939,228 @@ lead = results_df_all.iloc[0]
 print(f"🏆 Top: {lead['model_feature']} | Acc={lead['accuracy']:.4f} | F1-macro={lead['f1_macro']:.4f}")
 print(f"📁 Confusion Matrix đã lưu vào:\n - {PATHS.all_models} (tất cả mô hình)\n - {PATHS.balanced} (so sánh cân bằng)")
 print(f"💾 Đã lưu: {csv_path}")
+
+
+
+#**Streamlit**
+# CÀI THÊM GÓI CẦN THIẾT
+%pip -q install joblib
+
+import json, joblib, os
+import numpy as np
+
+# 1) Lưu bảng tổng hợp
+results_df_all.to_csv("results_summary.csv", index=False)
+
+# 2) Lưu mapping nhãn
+with open("id_to_label.json","w") as f:
+    json.dump(id_to_label, f)            # keys sẽ là str trong JSON
+with open("sorted_labels.json","w") as f:
+    json.dump(sorted_labels, f)
+
+# 3) Chọn model tốt nhất
+best = results_df_all.iloc[0]
+best_name = best["model_feature"]
+algo_name, feature_name = [x.strip() for x in best_name.split("—")]
+feature_name = feature_name.lower()
+
+# map tên → model
+def build_model(name):
+    if name.startswith("LinearSVC"):   return LinearSVC(C=1.0, class_weight='balanced', random_state=42)
+    if name.startswith("LogReg"):      return LogisticRegression(C=1.0, penalty='l2', solver='lbfgs',
+                                                                 max_iter=2000, class_weight='balanced',
+                                                                 random_state=42)
+    if name.startswith("Ridge"):       return RidgeClassifier(alpha=1.0, class_weight='balanced', random_state=42)
+    if name.startswith("KNN"):         return KNeighborsClassifier(n_neighbors=5)
+    if name.startswith("Decision Tree"): return DecisionTreeClassifier(random_state=42, class_weight='balanced')
+    if name.startswith("Naive Bayes"): return GaussianNB()
+    raise ValueError(f"Không nhận ra model: {name}")
+
+# 4) Lấy đúng tập train đã cân bằng theo feature + lưu vectorizer nếu cần
+if feature_name in ("bow",):
+    Xtr, ytr = X_train_bow_bal,  y_train_bow_bal
+    joblib.dump(bow_vectorizer, "bow_vectorizer.joblib")
+elif feature_name in ("tf-idf","tfidf"):
+    Xtr, ytr = X_train_tfidf_bal, y_train_tfidf_bal
+    joblib.dump(tfidf_vectorizer, "tfidf_vectorizer.joblib")
+else:
+    feature_name = "embeddings"
+    Xtr, ytr = X_train_emb_bal,  y_train_emb_bal
+
+# 5) Train lại model best trên full tập train tương ứng rồi lưu
+best_model = build_model(algo_name)
+if isinstance(best_model, GaussianNB):
+    Xtr = Xtr.toarray() if hasattr(Xtr, "toarray") else Xtr
+best_model.fit(Xtr, ytr)
+joblib.dump(best_model, "best_model.joblib")
+
+# 6) Lưu metadata để app biết phải dùng gì lúc suy luận
+meta = {
+    "feature": feature_name,
+    "model_feature": best_name,
+    "emb_model": "intfloat/multilingual-e5-base"   # tên SentenceTransformer dùng cho embeddings
+}
+with open("best_meta.json","w") as f:
+    json.dump(meta, f)
+
+# 7) Lưu y_test + toàn bộ dự đoán để app vẽ heatmap (DUY NHẤT 1 LẦN)
+np.save("y_test.npy", np.asarray(y_test, dtype=int))
+VAR_MAP = {
+    "KNN — BoW": "knn_bow_labels",
+    "KNN — TF-IDF": "knn_tfidf_labels",
+    "KNN — Embeddings": "knn_emb_labels",
+    "Decision Tree — BoW": "dt_bow_labels",
+    "Decision Tree — TF-IDF": "dt_tfidf_labels",
+    "Decision Tree — Embeddings": "dt_emb_labels",
+    "Naive Bayes — BoW": "nb_bow_labels",
+    "Naive Bayes — TF-IDF": "nb_tfidf_labels",
+    "Naive Bayes — Embeddings": "nb_emb_labels",
+    "LinearSVC — BoW": "svc_bow_labels",
+    "LinearSVC — TF-IDF": "svc_tfidf_labels",
+    "LinearSVC — Embeddings": "svc_emb_labels",
+    "LogReg — BoW": "log_bow_labels",
+    "LogReg — TF-IDF": "log_tfidf_labels",
+    "LogReg — Embeddings": "log_emb_labels",
+    "Ridge — BoW": "ridge_bow_labels",
+    "Ridge — TF-IDF": "ridge_tfidf_labels",
+    "Ridge — Embeddings": "ridge_emb_labels",
+}
+preds = {disp: np.asarray(globals()[var], dtype=int).tolist()
+         for disp, var in VAR_MAP.items() if var in globals()}
+with open("preds.json","w") as f:
+    json.dump(preds, f)
+
+print("✅ Saved: results_summary.csv, id_to_label.json, best_model.joblib, best_meta.json, preds.json, y_test.npy (+ vectorizer nếu cần)")
+print("🏆 Best:", best_name)
+
+# ---------- app.py ----------
+app_code = r"""
+import os
+import json, joblib, numpy as np, pandas as pd
+import streamlit as st
+import plotly.express as px
+from sentence_transformers import SentenceTransformer
+
+st.set_page_config(page_title='Model Leaderboard', layout='wide')
+
+# ---------- Load dữ liệu ----------
+df = pd.read_csv('results_summary.csv')
+meta = json.load(open('best_meta.json'))
+id_to_label = json.load(open('id_to_label.json'))
+id_to_label = {int(k): v for k, v in id_to_label.items()}
+
+sorted_labels = json.load(open('sorted_labels.json'))
+preds_map = json.load(open('preds.json')) if os.path.exists('preds.json') else {}
+y_test_arr = np.load('y_test.npy') if os.path.exists('y_test.npy') else np.array([])
+
+if not preds_map or y_test_arr.size == 0:
+    st.warning("Chưa có `preds.json` hoặc `y_test.npy`. Hãy chạy block xuất dự đoán trong notebook trước khi mở app.")
+    st.stop()
+
+st.title('📊 NLP Leaderboard & Inference Demo')
+
+# ---------- Layout: trái (F1/Acc/Leaderboard) — phải (Confusion Matrix) ----------
+col_left, col_right = st.columns([1.3, 1])
+
+with col_left:
+    st.subheader('📈 Scores')
+    tabs = st.tabs(['F1-macro (higher is better)', 'Accuracy', 'Leaderboard table'])
+
+    import plotly.express as px
+    with tabs[0]:
+        fig1 = px.bar(df, x='model_feature', y='f1_macro', hover_data=['accuracy'])
+        fig1.update_layout(xaxis_tickangle=-45, margin=dict(l=10, r=10, t=30, b=10), height=420)
+        st.plotly_chart(fig1, use_container_width=True)
+
+    with tabs[1]:
+        fig2 = px.bar(df, x='model_feature', y='accuracy')
+        fig2.update_layout(xaxis_tickangle=-45, margin=dict(l=10, r=10, t=30, b=10), height=420)
+        st.plotly_chart(fig2, use_container_width=True)
+
+    with tabs[2]:
+        st.dataframe(
+            df.style.format({'accuracy': '{:.4f}', 'f1_macro': '{:.4f}', 'f1_weighted': '{:.4f}'}),
+            use_container_width=True, height=420
+        )
+
+with col_right:
+    st.subheader('📌 Chọn mô hình & xem Confusion Matrix')
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from sklearn.metrics import confusion_matrix
+
+    model_opt = st.selectbox('Mô hình', list(preds_map.keys()), index=0)
+    normalize = st.checkbox('Chuẩn hóa theo hàng (%)', value=True)
+
+    y_pred_app = np.array(preds_map[model_opt], dtype=int)
+    cm = confusion_matrix(y_test_arr, y_pred_app, labels=list(range(len(sorted_labels))))
+    if normalize:
+        row_sums = cm.sum(axis=1, keepdims=True).clip(min=1)
+        cm_show = (cm / row_sums) * 100.0
+        fmt = '.1f'
+    else:
+        cm_show = cm
+        fmt = 'd'
+
+    fig, ax = plt.subplots(figsize=(6.5, 5.2))
+    sns.heatmap(cm_show, annot=True, fmt=fmt, cmap='Blues',
+                xticklabels=sorted_labels, yticklabels=sorted_labels,
+                cbar=False, linewidths=.5, linecolor='black', ax=ax)
+    ax.set_xlabel('Predicted'); ax.set_ylabel('True'); ax.set_title(model_opt)
+    st.pyplot(fig, use_container_width=True)
+
+# ---------- Inference ----------
+st.subheader('🔮 Đề xuất mô hình tốt nhất & thử dự đoán')
+st.info(f"Đề xuất: **{meta['model_feature']}**  |  Feature: `{meta['feature']}`")
+
+text = st.text_area('Nhập abstract/đoạn văn bản cần phân loại', height=160,
+                    placeholder='Paste your text here...')
+run = st.button('Dự đoán')
+
+if run and text.strip():
+    model = joblib.load('best_model.joblib')
+    feature = meta['feature']
+
+    if feature == 'bow':
+        vec = joblib.load('bow_vectorizer.joblib')
+        X = vec.transform([text])
+    elif feature in ('tf-idf', 'tfidf'):
+        vec = joblib.load('tfidf_vectorizer.joblib')
+        X = vec.transform([text])
+    else:
+        emb_model = meta.get('emb_model', 'intfloat/multilingual-e5-base')
+        m = SentenceTransformer(emb_model)
+        X = m.encode([f'query: {text}'], normalize_embeddings=True)
+        X = np.array(X)
+
+    if model.__class__.__name__ == 'GaussianNB':
+        X = X.toarray() if hasattr(X, 'toarray') else X
+
+    pred = int(model.predict(X)[0])
+    st.success(f'Kết quả: **{id_to_label[pred]}**')
+"""
+with open('app.py', 'w', encoding='utf-8') as f:
+    f.write(app_code)
+
+print("✅ Created app.py")
+
+# 1) chạy streamlit headless
+!streamlit run app.py --server.port 8501 --server.headless true &> /content/streamlit.log &
+
+# 2) tải cloudflared & mở quick tunnel
+!wget -q -O /content/cloudflared \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+!chmod +x /content/cloudflared
+!/content/cloudflared tunnel --url http://localhost:8501 --no-autoupdate > /content/cf.log 2>&1 &
+
+# 3) lấy public URL (đợi vài giây)
+import time, re
+for _ in range(20):
+    time.sleep(1)
+    log = open('/content/cf.log').read()
+    m = re.search(r'https://[-0-9a-z]+\.trycloudflare\.com', log)
+    if m:
+        print("🔗 Open this URL:", m.group(0))
+        break
+else:
+    print("⚠️ Không thấy URL, in log để kiểm tra:\n", log[-2000:])
