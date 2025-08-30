@@ -18,8 +18,8 @@ class Routes:
                     icon=":material/explore:",
                 ),
                 st.Page(
-                    "pages/data_processing.py",
-                    title="Data Processing",
+                    "pages/data_sampling.py",
+                    title="Data Sampling",
                     icon=":material/explore:",
                 ),
                 st.Page(

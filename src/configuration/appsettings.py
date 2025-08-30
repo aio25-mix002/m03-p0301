@@ -16,10 +16,16 @@ class DataSettings(BaseModel):
     external_huggingface_dir: str
     interim_dir: str
     processed_dir: str
+    experiments_dir: str
 
 
 class TrainSettings(BaseModel):
     test_size: float
+
+
+class SamplingSettings(BaseModel):
+    default_top_n: int
+    default_topics: list[str]
 
 
 # class ModelSettings(BaseModel):
@@ -32,6 +38,7 @@ class AppSettings(BaseSettings):
     random_state: int
     data: DataSettings
     train: TrainSettings
+    sampling: SamplingSettings
     # model: ModelSettings
     # eval: EvalSettings
     model_config = SettingsConfigDict(

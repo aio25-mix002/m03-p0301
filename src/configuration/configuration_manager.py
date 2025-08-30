@@ -1,4 +1,4 @@
-from configuration.appsettings import AppSettings
+from src.configuration.appsettings import AppSettings
 
 class ConfigurationManager:
     @staticmethod

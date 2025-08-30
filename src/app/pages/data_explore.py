@@ -1,35 +1,57 @@
-from modeling.data import dataset_loader
+from src.app.services import dataset_service
 import streamlit as st
-
-
-@st.cache_resource
-def get_rawdata_info():
-    raw_data = dataset_loader.load_data()
-    toplevel_category_set = set()
-    all_category_set = set()
-    # Collect unique labels
-    for category in raw_data["train"]["categories"]:
-        all_category_set.add(category)
-        parts = category.split(" ")
-        for part in parts:
-            topic = part.split(".")[0]
-            toplevel_category_set.add(topic)
-
-    info = {
-        "total_records": len(raw_data["train"]),
-        "toplevel_categories": toplevel_category_set,
-        "all_categories": all_category_set,
-    }
-
-    return info
-
+import pandas as pd
 
 st.title("Data Exploration")
 
 st.markdown("### Raw Data")
 with st.spinner("Loading data..."):
-    raw_data_info = get_rawdata_info()
 
-    st.metric("Total Records", f"{raw_data_info['total_records']:,}")
-    st.metric("All Categories", f"{len(raw_data_info['all_categories']):,}")
-    st.metric("Top-Level Categories", f"{len(raw_data_info['toplevel_categories']):,}")
+    # Get data information
+    rawdata_info = dataset_service.get_rawdata_info()
+
+    # Display data information
+    st.metric("Total Records", f"{rawdata_info.total_records:,}")
+    st.metric("Top-Level Categories", f"{len(rawdata_info.toplevel_topics):,}")
+    st.metric("All Categories", f"{len(rawdata_info.topics):,}")
+    st.metric("Max Topic Depth", f"{rawdata_info.max_topic_depth:,}")
+
+    # Show top-level topic information
+    column_config = {
+        "topic": st.column_config.TextColumn(width="medium"),
+        "sample_count": st.column_config.NumberColumn(
+            width="medium", format="localized"
+        ),
+        "topic_max_depth": st.column_config.NumberColumn(
+            width="medium", format="localized"
+        ),
+    }
+    st.markdown("#### Top-level Topic")
+    toplevel_topics = pd.DataFrame(
+        [
+            {
+                "topic": topicname,
+                "sample_count": info.sample_count,
+                "subtopics_count": len(info.subtopics),
+                "topic_max_depth": info.max_topics_depth,
+            }
+            for topicname, info in rawdata_info.toplevel_topics.items()
+        ]
+    )
+    st.dataframe(
+        toplevel_topics, column_config=column_config, use_container_width=False
+    )
+
+    # Show topic information
+    st.markdown("#### Topics")
+    topicsdf = pd.DataFrame(
+        [
+            {
+                "topic": topicname,
+                "sample_count": info.sample_count,
+                "topic_max_depth": info.max_topics_depth,
+            }
+            for topicname, info in rawdata_info.topics.items()
+        ]
+    )
+    st.dataframe(topicsdf, column_config=column_config, use_container_width=False)
