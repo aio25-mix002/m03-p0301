@@ -1,3 +1,21 @@
+import os
+from numpy import ndarray
+from src.modeling.models.classifier.decision_tree_classifier import (
+    DecisionTreeClassifier,
+)
+from src.modeling.models.classifier.gaussian_nb_classifier import GaussianNBClassifier
+from src.modeling.models.classifier.kmeans_classifier import KmeansClassifier
+from src.modeling.models.classifier.knn_classifier import KnnClassifier
+from src.modeling.visualization.plot_metrics import plot_confusion_matrix
+from src.app.states.app_state import get_app_state
+from src.modeling.models.text_encoder.bagofword_text_vectorizer import (
+    BagOfWordTextVectorizer,
+)
+from src.modeling.models.text_encoder.tfidf_text_vectorizer import TfidfTextVectorizer
+from src.modeling.models.text_encoder.wordembedding_encoder import (
+    WordEmbeddingTextVectorizer,
+)
+from src.app.services import dataset_service
 """
 Streamlit page for training and evaluating classification models on arXiv
 abstracts.  Users can choose the type of text vectorisation (Bag‑of‑Words or
@@ -11,6 +29,11 @@ confusion matrix.  Trained models and vectorisers are stored in
 """
 
 import streamlit as st
+from src.configuration.configuration_manager import ConfigurationManager
+import matplotlib.pyplot as plt
+
+SETTINGS = ConfigurationManager.load()
+app_state = get_app_state()
 import pandas as pd
 import numpy as np
 from modeling.data import dataset_loader
@@ -316,338 +339,4 @@ def evaluate_model(model, model_name: str, X_test, y_test):
 
 
 st.title("Model Experiments")
-st.write(
-    "Chọn phương pháp mã hóa, phương pháp xử lý mất cân bằng và mô hình phân loại, "
-    "sau đó nhấn **Huấn luyện** để đánh giá hiệu suất mô hình trên tập dữ liệu đã tiền xử lý."
-)
-
-# Select imbalance handling strategy
-imbalance_option = st.selectbox(
-    "Phương pháp xử lý dữ liệu mất cân bằng",
-    options=[
-        "Không xử lý (giữ nguyên)",
-        "Cân bằng mẫu (chọn đều mỗi lớp)",
-        "Oversampling ngẫu nhiên",
-        "Class weighting (trọng số)"
-        ,
-        "SMOTE",
-        "ADASYN",
-        "Back translation"
-    ],
-    index=0,
-)
-
-# Choose preprocessing level
-preprocessing_option = st.radio(
-    "Phương pháp tiền xử lý",
-    options=["Cơ bản", "Nâng cao"],
-    index=0,
-    help=(
-        "Chọn 'Nâng cao' để áp dụng lọc stopwords, lemmatisation/stemming, "
-        "lọc từ hiếm và phát hiện cụm từ."
-    ),
-)
-
-# Load the appropriate dataset based on the imbalance handling strategy and preprocessing option.
-df_train: pd.DataFrame | None = None
-df_test: pd.DataFrame | None = None
-if imbalance_option == "Back translation":
-    # For back translation, we expect pre‑split CSV files containing the augmented
-    # training set and the untouched test set.  These files should reside in the
-    # ``data`` directory at the project root.  Users can adjust the paths as needed.
-    train_csv = os.path.normpath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "..",
-            "..",
-            "data",
-            "arxiv_train_augmented.csv",
-        )
-    )
-    test_csv = os.path.normpath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "..",
-            "..",
-            "data",
-            "arxiv_test_untouched.csv",
-        )
-    )
-    # Load the pre‑split datasets.  Advanced preprocessing is not applied on these
-    # files because they have already been generated externally.  If you wish
-    # to apply additional cleaning, you could call transform_data_advanced here.
-    df_train, df_test = dataset_loader.load_augmented_back_translation(train_csv, test_csv)
-    df = None  # placeholder to signal that pre‑split frames are used
-else:
-    df = load_preprocessed_dataframe(
-        balanced=(imbalance_option == "Cân bằng mẫu (chọn đều mỗi lớp)"),
-        advanced=(preprocessing_option == "Nâng cao"),
-    )
-    df_train = df
-    df_test = None
-
-if (df is not None and df.empty) or (df is None and (df_train is None or df_train.empty)):
-    st.warning("Không thể tải dữ liệu. Hãy kiểm tra đường dẫn đến file hoặc kết nối Internet.")
-else:
-    # UI controls for vectoriser and model selection
-    vectoriser_option = st.selectbox(
-        "Phương pháp mã hóa văn bản",
-        options=[
-            "Bag‑of‑Words (BoW)",
-            "TF‑IDF",
-            "Embeddings (LSA)",
-            "Sentence Embeddings (E5)",
-            "Fusion (TF‑IDF + LSA)"
-        ],
-        index=1,
-    )
-    model_option = st.selectbox(
-        "Thuật toán phân loại",
-        options=[
-            "K‑Nearest Neighbours (KNN)",
-            "Decision Tree",
-            "Naive Bayes",
-            "Logistic Regression",
-            "K‑Means Clustering",
-        ],
-    )
-
-    # Hyperparameter inputs
-    params: dict[str, int | float | bool | None] = {}
-    # KNN hyperparameters
-    if model_option == "K‑Nearest Neighbours (KNN)":
-        params["n_neighbors"] = st.slider(
-            "Số láng giềng (k)", min_value=1, max_value=15, value=5
-        )
-        params["weighted"] = st.checkbox(
-            "Sử dụng trọng số khoảng cách (Weighted KNN)", value=False
-        )
-    # Decision Tree hyperparameters
-    elif model_option == "Decision Tree":
-        params["max_depth"] = st.slider(
-            "Độ sâu tối đa của cây (None = không giới hạn)", min_value=1, max_value=20, value=10
-        )
-        params["min_samples_leaf"] = st.slider(
-            "Số mẫu tối thiểu ở lá", min_value=1, max_value=10, value=1
-        )
-        params["ccp_alpha"] = st.number_input(
-            "Giá trị ccp_alpha (cắt tỉa); 0 = không cắt", min_value=0.0, max_value=0.05, value=0.0, step=0.005
-        )
-    # K‑Means hyperparameters
-    elif model_option == "K‑Means Clustering":
-        params["n_clusters"] = st.slider(
-            "Số cụm (k)", min_value=2, max_value=10, value=5
-        )
-
-    if st.button("Huấn luyện"):
-        # Determine training and testing sets.  If ``df_train`` and ``df_test`` are
-        # provided (Back translation), use them directly; otherwise split ``df``.
-        if df is None and df_train is not None and df_test is not None:
-            X_train_text = df_train["text"]
-            y_train = df_train["label"]
-            X_test_text = df_test["text"]
-            y_test = df_test["label"]
-        else:
-            X_train_text, X_test_text, y_train, y_test = train_test_split(
-                df["text"], df["label"], test_size=0.2, random_state=42, stratify=df["label"]
-            )
-
-        # If random oversampling is selected and not using pre‑split back translation,
-        # oversample the training set prior to vectorisation
-        if imbalance_option == "Oversampling ngẫu nhiên" and not (df is None and df_train is not None):
-            train_df = pd.DataFrame({"text": X_train_text, "label": y_train}).reset_index(drop=True)
-            class_counts = train_df["label"].value_counts()
-            max_count = class_counts.max()
-            balanced_frames = []
-            for label, group in train_df.groupby("label"):
-                if len(group) < max_count:
-                    sampled = resample(
-                        group,
-                        replace=True,
-                        n_samples=max_count,
-                        random_state=42,
-                    )
-                else:
-                    sampled = group
-                balanced_frames.append(sampled)
-            balanced_train_df = (
-                pd.concat(balanced_frames)
-                .sample(frac=1, random_state=42)
-                .reset_index(drop=True)
-            )
-            X_train_text = balanced_train_df["text"]
-            y_train = balanced_train_df["label"]
-
-        # Determine the cache filename for the current configuration.  If a model
-        # has already been trained with the same imbalance handling, vectorisation
-        # method, classification algorithm and hyperparameters, it will be reused.
-        model_file = get_model_filename(
-            imbalance_option, vectoriser_option, model_option, params
-        )
-
-        # Handle the special case of K‑Means clustering separately
-        if model_option == "K‑Means Clustering":
-            # K‑Means is unsupervised; we cluster the entire training set (after balancing if applicable)
-            vectoriser = get_vectoriser(vectoriser_option)
-            if vectoriser is None:
-                st.error(
-                    "Không tìm thấy thư viện `sentence_transformers`. Vui lòng cài đặt\n"
-                    "thư viện này hoặc chọn một phương pháp mã hóa khác."
-                )
-                st.stop()
-            # Fit the vectoriser on all available text (train + test if back translation)
-            if df is not None:
-                texts_for_clustering = df["text"]
-                labels_for_clustering = df["label"]
-            else:
-                # Use concatenated train and test sets
-                texts_for_clustering = pd.concat([df_train["text"], df_test["text"]], ignore_index=True)
-                labels_for_clustering = pd.concat([df_train["label"], df_test["label"]], ignore_index=True)
-            X_all_vec = vectoriser.fit_transform(texts_for_clustering)
-            # Determine number of clusters
-            n_clusters = params.get("n_clusters", 5)
-            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-            cluster_labels = kmeans.fit_predict(X_all_vec)
-            # Compute clustering metrics if possible
-            silhouette = None
-            db_score = None
-            try:
-                if n_clusters > 1:
-                    silhouette = silhouette_score(X_all_vec, cluster_labels)
-                    db_score = davies_bouldin_score(X_all_vec.toarray() if hasattr(X_all_vec, "toarray") else X_all_vec, cluster_labels)
-            except Exception:
-                pass
-            st.write(f"**Số cụm:** {n_clusters}")
-            if silhouette is not None:
-                st.write(f"**Silhouette Score:** {silhouette:.3f}")
-            if db_score is not None:
-                st.write(f"**Davies–Bouldin Index:** {db_score:.3f}")
-            # Display distribution of clusters and true labels
-            cluster_df = pd.DataFrame({"cluster": cluster_labels, "label": labels_for_clustering})
-            st.subheader("Phân bố nhãn theo cụm")
-            cluster_counts = cluster_df.groupby(["cluster", "label"]).size().unstack(fill_value=0)
-            st.dataframe(cluster_counts)
-            # Save clusterer and vectoriser for potential reuse (optional)
-            joblib.dump({"vectorizer": vectoriser, "model": kmeans}, model_file)
-            st.session_state["vectorizer"] = vectoriser
-            st.session_state["model"] = kmeans
-            # Persist metadata for use on the Live Prediction page.  These entries
-            # allow us to display which model, vectorisation method and imbalance
-            # strategy were used during training.  Without setting these values,
-            # the Live Prediction page cannot provide contextual information.
-            st.session_state["model_name"] = model_option
-            st.session_state["vectoriser_name"] = vectoriser_option
-            st.session_state["imbalance_option"] = imbalance_option
-        else:
-            # Classification pipeline
-            # Attempt to load a cached model and vectoriser
-            if os.path.exists(model_file):
-                saved = joblib.load(model_file)
-                vectoriser = saved["vectorizer"]
-                model = saved["model"]
-                st.success("Đã tải mô hình từ file cache, bỏ qua bước huấn luyện.")
-                X_train_vec = vectoriser.transform(X_train_text)
-                X_test_vec = vectoriser.transform(X_test_text)
-            else:
-                # Select vectoriser
-                vectoriser = get_vectoriser(vectoriser_option)
-                if vectoriser is None:
-                    st.error(
-                        "Không tìm thấy thư viện `sentence_transformers`. Vui lòng cài đặt\n"
-                        "thư viện này hoặc chọn một phương pháp mã hóa khác."
-                    )
-                    st.stop()
-                # Vectorise text
-                X_train_vec, X_test_vec = fit_vectoriser(vectoriser, X_train_text, X_test_text)
-
-                # Apply feature‑space oversampling methods
-                if imbalance_option == "SMOTE":
-                    if SMOTE is None:
-                        st.error(
-                            "Thuật toán SMOTE yêu cầu cài đặt thư viện imbalanced‑learn. "
-                            "Vui lòng cài đặt gói `imbalanced-learn` để sử dụng tính năng này."
-                        )
-                        st.stop()
-                    sm = SMOTE(random_state=42)
-                    X_array = X_train_vec.toarray() if hasattr(X_train_vec, "toarray") else X_train_vec
-                    X_array, y_train = sm.fit_resample(X_array, y_train)
-                    X_train_vec = X_array
-                elif imbalance_option == "ADASYN":
-                    if ADASYN is None:
-                        st.error(
-                            "Thuật toán ADASYN yêu cầu cài đặt thư viện imbalanced‑learn. "
-                            "Vui lòng cài đặt gói `imbalanced-learn` để sử dụng tính năng này."
-                        )
-                        st.stop()
-                    ada = ADASYN(random_state=42)
-                    X_array = X_train_vec.toarray() if hasattr(X_train_vec, "toarray") else X_train_vec
-                    X_array, y_train = ada.fit_resample(X_array, y_train)
-                    X_train_vec = X_array
-
-                # Prepare class/sample weights
-                class_weights: dict[str, float] | str | None = None
-                sample_weights: np.ndarray | None = None
-                if imbalance_option == "Class weighting (trọng số)":
-                    unique_classes = np.unique(y_train)
-                    weights = compute_class_weight(
-                        class_weight="balanced", classes=unique_classes, y=y_train
-                    )
-                    class_weights = {cls: wt for cls, wt in zip(unique_classes, weights)}
-                    sample_weights = np.array([class_weights[label] for label in y_train])
-
-                # Train model
-                model = train_model(
-                    model_option,
-                    X_train_vec,
-                    y_train,
-                    params,
-                    class_weight=class_weights,
-                    sample_weight=sample_weights,
-                )
-
-                # Save model and vectoriser
-                joblib.dump({"vectorizer": vectoriser, "model": model}, model_file)
-                st.info(f"Mô hình và vectoriser đã được lưu ở {model_file}")
-
-            # Evaluate model
-            y_pred, accuracy, report, cm, f1, auc = evaluate_model(model, model_option, X_test_vec, y_test)
-            st.write(f"**Độ chính xác:** {accuracy:.2%}")
-            if f1 is not None:
-                st.write(f"**F1 macro:** {f1:.2f}")
-            if auc is not None:
-                st.write(f"**ROC‑AUC macro:** {auc:.2f}")
-            # Classification report
-            rep_df = pd.DataFrame(report).transpose()
-            st.subheader("Báo cáo phân loại")
-            st.dataframe(
-                rep_df.style.format(
-                    {"precision": "{:.2f}", "recall": "{:.2f}", "f1-score": "{:.2f}", "support": "{:.0f}"}
-                )
-            )
-            # Confusion matrix
-            st.subheader("Confusion Matrix")
-            fig, ax = plt.subplots(figsize=(6, 4))
-            labels_unique = np.unique(list(y_test))
-            sns.heatmap(
-                cm,
-                annot=True,
-                fmt="d",
-                cmap="Blues",
-                xticklabels=labels_unique,
-                yticklabels=labels_unique,
-                cbar=False,
-                ax=ax,
-            )
-            ax.set_xlabel("Predicted Label")
-            ax.set_ylabel("True Label")
-            st.pyplot(fig)
-            # Save objects for live prediction
-            st.session_state["vectorizer"] = vectoriser
-            st.session_state["model"] = model
-            # Persist metadata for use on the Live Prediction page.  This
-            # information is helpful for display and simple explainability.
-            st.session_state["model_name"] = model_option
-            st.session_state["vectoriser_name"] = vectoriser_option
-            st.session_state["imbalance_option"] = imbalance_option
+st.write("Welcome to the Model Experiments Page!")

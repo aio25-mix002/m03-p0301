@@ -1,5 +1,5 @@
 from datasets import load_dataset
-from configuration.configuration_manager import ConfigurationManager
+from src.configuration.configuration_manager import ConfigurationManager
 
 SETTINGS = ConfigurationManager.load()
 
