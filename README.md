@@ -7,7 +7,7 @@
     - [Step 2: Activate the virtual environment](#step-2-activate-the-virtual-environment)
     - [Step 3: Install dependencies](#step-3-install-dependencies)
   - [Preparation](#preparation)
-    - [Download dataset](#download-dataset)
+    - [Download dataset (optional)](#download-dataset-optional)
   - [Run application](#run-application)
     - [Via CLI](#via-cli)
     - [Via Visual Studio Code Launch Profile](#via-visual-studio-code-launch-profile)
@@ -41,7 +41,7 @@ uv sync
 ```
 
 ## Preparation
-### Download dataset
+### Download dataset (optional)
 ```bash
 uv run ./scripts/download_data.py
 ```
@@ -50,7 +50,7 @@ uv run ./scripts/download_data.py
 
 ### Via CLI
 ```bash
-uvx streamlit run ./src/app/main.py
+uv run streamlit run ./src/app/main.py
 ```
 ### Via Visual Studio Code Launch Profile
 Profiles:
