@@ -36,14 +36,14 @@ SETTINGS = ConfigurationManager.load()
 app_state = get_app_state()
 import pandas as pd
 import numpy as np
-from modeling.data import dataset_loader
+from src.modeling.data import dataset_loader
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
 from sklearn.pipeline import make_pipeline
 try:
     # Optional import for embedding vectoriser
-    from modeling.data.embedding_vectorizer import EmbeddingVectorizer
+    from modeling.data.embedding_vectorizer import EmbeddingVectorizer, FAISSEmbeddingVectorizer
 except ImportError:
     EmbeddingVectorizer = None  # type: ignore[misc]
 from sklearn.neighbors import KNeighborsClassifier
@@ -190,6 +190,25 @@ def get_vectoriser(method: str):
             ("tfidf", tfidf),
             ("lsa", lsa),
         ])
+    elif method == 'Embedding with FAISS index':
+        @st.cache_resource
+        def get_faiss_vectorizer():
+            """Get cached FAISS vectorizer"""
+            return FAISSEmbeddingVectorizer(
+                model_name='intfloat/multilingual-e5-base',
+                cache_dir="./cache/faiss",
+                index_type="flat"  # or "ivf", "hnsw"
+            )
+            
+        @st.cache_data
+        def build_faiss_index(texts, mode='passage'):
+            """Build and cache FAISS index"""
+            vectorizer = get_faiss_vectorizer()
+            return vectorizer.build_index_from_texts(texts, mode)
+
+        vectorizer = get_faiss_vectorizer()
+        
+        return vectorizer
     else:
         raise ValueError(f"Unknown vectorisation method: {method}")
 

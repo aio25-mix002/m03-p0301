@@ -23,6 +23,11 @@ class Routes:
                     icon=":material/explore:",
                 ),
                 st.Page(
+                    "pages/data_processing.py",
+                    title="Data Processing",
+                    icon=":material/explore:",
+                ),
+                st.Page(
                     "pages/model_experiments.py",
                     title="Experiments",
                     icon=":material/experiment:",

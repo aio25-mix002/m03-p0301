@@ -10,7 +10,7 @@ the dataset on every page refresh.
 
 import streamlit as st
 import pandas as pd
-from modeling.data import dataset_loader
+from src.modeling.data import dataset_loader
 
 
 @st.cache_data(show_spinner=True)
