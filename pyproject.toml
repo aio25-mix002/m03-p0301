@@ -21,7 +21,7 @@ dependencies = [
     "torchvision==0.21.0",
      "sentence-transformers", "nltk", "imbalanced-learn",
     "faiss-cpu>=1.7.4",  # or "faiss-gpu" for GPU support
-    "faiss>=1.7.4",
+    # "faiss-gpu==1.7.2"
 ]
 
 
