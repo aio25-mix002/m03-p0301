@@ -104,12 +104,12 @@ def load_preprocessed_dataframe(
     if balanced:
         raw_samples = dataset_loader.extract_balanced_samples(data)
     else:
-        raw_samples = dataset_loader.extract_samples(data)
+        raw_samples = dataset_loader.extract_samples(data, top_n=1000, categories_to_select=["astro-ph", "cond-mat", "cs", "math", "physics"])
     if advanced:
         processed = dataset_loader.transform_data_advanced(raw_samples)
     else:
         processed = dataset_loader.transform_data(raw_samples)
-    return pd.DataFrame([{"text": item.text, "label": item.label} for item in processed])
+    return pd.DataFrame([{"text": item.text, "label": item.label} for item in processed[0]])
 
 
 # -----------------------------------------------------------------------------
