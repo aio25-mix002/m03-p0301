@@ -36,14 +36,14 @@ SETTINGS = ConfigurationManager.load()
 app_state = get_app_state()
 import pandas as pd
 import numpy as np
-from modeling.data import dataset_loader
+from src.modeling.data import dataset_loader
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
 from sklearn.pipeline import make_pipeline
 try:
     # Optional import for embedding vectoriser
-    from modeling.data.embedding_vectorizer import EmbeddingVectorizer
+    from modeling.data.embedding_vectorizer import EmbeddingVectorizer, FAISSEmbeddingVectorizer
 except ImportError:
     EmbeddingVectorizer = None  # type: ignore[misc]
 from sklearn.neighbors import KNeighborsClassifier
@@ -104,12 +104,12 @@ def load_preprocessed_dataframe(
     if balanced:
         raw_samples = dataset_loader.extract_balanced_samples(data)
     else:
-        raw_samples = dataset_loader.extract_samples(data)
+        raw_samples = dataset_loader.extract_samples(data, top_n=1000, categories_to_select=["astro-ph", "cond-mat", "cs", "math", "physics"])
     if advanced:
         processed = dataset_loader.transform_data_advanced(raw_samples)
     else:
         processed = dataset_loader.transform_data(raw_samples)
-    return pd.DataFrame([{"text": item.text, "label": item.label} for item in processed])
+    return pd.DataFrame([{"text": item.text, "label": item.label} for item in processed[0]])
 
 
 # -----------------------------------------------------------------------------
@@ -190,6 +190,25 @@ def get_vectoriser(method: str):
             ("tfidf", tfidf),
             ("lsa", lsa),
         ])
+    elif method == 'Embedding with FAISS index':
+        @st.cache_resource
+        def get_faiss_vectorizer():
+            """Get cached FAISS vectorizer"""
+            return FAISSEmbeddingVectorizer(
+                model_name='intfloat/multilingual-e5-base',
+                cache_dir="./cache/faiss",
+                index_type="flat"  # or "ivf", "hnsw"
+            )
+            
+        @st.cache_data
+        def build_faiss_index(texts, mode='passage'):
+            """Build and cache FAISS index"""
+            vectorizer = get_faiss_vectorizer()
+            return vectorizer.build_index_from_texts(texts, mode)
+
+        vectorizer = get_faiss_vectorizer()
+        
+        return vectorizer
     else:
         raise ValueError(f"Unknown vectorisation method: {method}")
 
@@ -340,3 +359,198 @@ def evaluate_model(model, model_name: str, X_test, y_test):
 
 st.title("Model Experiments")
 st.write("Welcome to the Model Experiments Page!")
+# Add this to the end of model_experiments.py (after line 362)
+
+# Main UI Layout
+st.markdown("---")
+
+# Sidebar for configuration
+with st.sidebar:
+    st.header("Configuration")
+    
+    # Data loading options
+    st.subheader("Data Options")
+    use_balanced = st.checkbox("Use Balanced Dataset", value=False)
+    use_advanced_preprocessing = st.checkbox("Advanced Preprocessing", value=False)
+    
+    # Vectorization method
+    st.subheader("Text Vectorization")
+    vectorization_methods = [
+        "Bag‑of‑Words (BoW)",
+        "TF‑IDF", 
+        "Embeddings (LSA)",
+        "Sentence Embeddings (E5)",
+        "Fusion (TF‑IDF + LSA)",
+        "Embedding with FAISS index"
+    ]
+    vec_method = st.selectbox("Vectorization Method", vectorization_methods)
+    
+    # Model selection
+    st.subheader("Classification Model")
+    model_options = [
+        "K‑Nearest Neighbours (KNN)",
+        "Decision Tree",
+        "Naive Bayes",
+        "Logistic Regression"
+    ]
+    model_choice = st.selectbox("Model", model_options)
+    
+    # Imbalance handling
+    st.subheader("Class Imbalance Handling")
+    imbalance_options = [
+        "None",
+        "Class Weights",
+        "Oversampling (SMOTE)",
+        "Oversampling (ADASYN)"
+    ]
+    imb_method = st.selectbox("Imbalance Method", imbalance_options)
+
+# Main content area
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.header("Model Training & Evaluation")
+    
+    # Load data button
+    if st.button("Load Dataset", type="primary"):
+        with st.spinner("Loading dataset..."):
+            try:
+                df = load_preprocessed_dataframe(
+                    balanced=use_balanced, 
+                    advanced=use_advanced_preprocessing
+                )
+                st.session_state['dataset'] = df
+                st.success(f"Dataset loaded: {len(df)} samples")
+                st.write(f"**Class distribution:**")
+                st.write(df['label'].value_counts())
+            except Exception as e:
+                st.error(f"Error loading dataset: {str(e)}")
+    
+    # Train model button
+    if st.button("Train Model", type="primary", disabled='dataset' not in st.session_state):
+        if 'dataset' not in st.session_state:
+            st.error("Please load dataset first!")
+        else:
+            with st.spinner("Training model..."):
+                try:
+                    # Get dataset
+                    df = st.session_state['dataset']
+                    
+                    # Split data
+                    X = df['text'].tolist()
+                    y = df['label'].tolist()
+                    X_train, X_test, y_train, y_test = train_test_split(
+                        X, y, test_size=0.2, random_state=42, stratify=y
+                    )
+                    
+                    # Get vectorizer
+                    vectorizer = get_vectoriser(vec_method)
+                    if vectorizer is None:
+                        st.error(f"Vectorizer {vec_method} not available")
+                        st.stop()
+                    
+                    # Fit vectorizer and transform data
+                    X_train_vec, X_test_vec = fit_vectoriser(vectorizer, X_train, X_test)
+                    
+                    # Handle class imbalance
+                    class_weight = None
+                    sample_weight = None
+                    
+                    if imb_method == "Class Weights":
+                        classes = np.unique(y_train)
+                        weights = compute_class_weight('balanced', classes=classes, y=y_train)
+                        class_weight = dict(zip(classes, weights))
+                    
+                    # Model parameters
+                    params = {}
+                    if model_choice == "K‑Nearest Neighbours (KNN)":
+                        params = {"n_neighbors": 5, "weighted": False}
+                    elif model_choice == "Decision Tree":
+                        params = {"max_depth": None, "min_samples_leaf": 1}
+                    
+                    # Train model
+                    model = train_model(
+                        model_choice, X_train_vec, y_train, params,
+                        class_weight=class_weight, sample_weight=sample_weight
+                    )
+                    
+                    # Store in session state
+                    st.session_state['trained_model'] = model
+                    st.session_state['vectorizer'] = vectorizer
+                    st.session_state['X_test'] = X_test_vec
+                    st.session_state['y_test'] = y_test
+                    st.session_state['model_name'] = model_choice
+                    
+                    st.success("Model trained successfully!")
+                    
+                except Exception as e:
+                    st.error(f"Error training model: {str(e)}")
+    
+    # Evaluate model button
+    if st.button("Evaluate Model", type="secondary", disabled='trained_model' not in st.session_state):
+        if 'trained_model' not in st.session_state:
+            st.error("Please train a model first!")
+        else:
+            with st.spinner("Evaluating model..."):
+                try:
+                    model = st.session_state['trained_model']
+                    model_name = st.session_state['model_name']
+                    X_test = st.session_state['X_test']
+                    y_test = st.session_state['y_test']
+                    
+                    # Evaluate model
+                    y_pred, accuracy, report, cm, f1, auc = evaluate_model(
+                        model, model_name, X_test, y_test
+                    )
+                    
+                    # Display results
+                    st.subheader("Evaluation Results")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Accuracy", f"{accuracy:.4f}")
+                    with col2:
+                        st.metric("F1 Score", f"{f1:.4f}" if f1 else "N/A")
+                    with col3:
+                        st.metric("ROC-AUC", f"{auc:.4f}" if auc else "N/A")
+                    
+                    # Classification report
+                    st.subheader("Classification Report")
+                    report_df = pd.DataFrame(report).transpose()
+                    st.dataframe(report_df)
+                    
+                    # Confusion matrix
+                    st.subheader("Confusion Matrix")
+                    fig, ax = plt.subplots(figsize=(8, 6))
+                    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+                    ax.set_xlabel('Predicted')
+                    ax.set_ylabel('Actual')
+                    st.pyplot(fig)
+                    
+                except Exception as e:
+                    st.error(f"Error evaluating model: {str(e)}")
+
+with col2:
+    st.header("Model Status")
+    
+    # Show current configuration
+    st.subheader("Current Configuration")
+    if 'dataset' in st.session_state:
+        st.success("✅ Dataset Loaded")
+        st.write(f"Samples: {len(st.session_state['dataset'])}")
+    else:
+        st.info("⏳ No dataset loaded")
+    
+    if 'trained_model' in st.session_state:
+        st.success("✅ Model Trained")
+        st.write(f"Model: {st.session_state['model_name']}")
+    else:
+        st.info("⏳ No model trained")
+    
+    # Clear session state
+    if st.button("Clear All", type="secondary"):
+        for key in ['dataset', 'trained_model', 'vectorizer', 'X_test', 'y_test', 'model_name']:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.success("Session cleared!")
+        st.rerun()

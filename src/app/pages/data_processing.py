@@ -10,7 +10,7 @@ the dataset on every page refresh.
 
 import streamlit as st
 import pandas as pd
-from modeling.data import dataset_loader
+from src.modeling.data import dataset_loader
 
 
 @st.cache_data(show_spinner=True)
@@ -26,7 +26,7 @@ def load_and_preprocess():
     ``extract_balanced_samples``.
     """
     data = dataset_loader.load_data()
-    samples = dataset_loader.extract_samples(data)
+    samples = dataset_loader.extract_samples(data, top_n=1000, categories_to_select=["astro-ph", "cond-mat", "cs", "math", "physics"])
     processed = dataset_loader.transform_data(samples)
     return samples, processed
 
@@ -41,8 +41,9 @@ if st.button("Tải và tiền xử lý dữ liệu"):
     samples, processed = load_and_preprocess()
 
     raw_df = pd.DataFrame(samples)
+    # print('line 45 processed', processed)
     proc_df = pd.DataFrame(
-        [{"text": item.text, "label": item.label} for item in processed]
+        [{"text": item.text, "label": item.label} for item in processed[0]]
     )
 
     # Create interactive tabs for a more modern UI
