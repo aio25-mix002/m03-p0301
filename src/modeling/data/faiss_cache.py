@@ -1,9 +1,8 @@
 import faiss
 import numpy as np
 import pickle
-import streamlit as st
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 import hashlib
 from sentence_transformers import SentenceTransformer
 

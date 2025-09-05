@@ -1,7 +1,7 @@
 from src.modeling.data.dataset import DatasetMetadata
 from src.modeling.models.classifier.classifier_base import ClassifierBase
 from sklearn.metrics import accuracy_score, classification_report
-from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier, GradientBoostingClassifier, StackingClassifier
+from sklearn.ensemble import RandomForestClassifier as SKRandomForestClassifier
 
 from src.configuration.configuration_manager import ConfigurationManager
 
@@ -13,7 +13,7 @@ class RandomForestClassifier(ClassifierBase):
     def train_test(
         self, x_train, y_train, x_test, y_test, dataset_metadata: DatasetMetadata
     ) -> tuple[int, float, classification_report]:
-        rf = RandomForestClassifier(n_estimators=400,random_state=SETTINGS.random_state)
+        rf = SKRandomForestClassifier(n_estimators=400,random_state=SETTINGS.random_state)
         rf.fit(x_train, y_train)
 
         # Predict on the test set

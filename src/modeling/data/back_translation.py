@@ -1,5 +1,5 @@
 # Trên Google Colab: cài đặt thư viện cần thiết
-!pip install -q datasets googletrans==4.0.0rc1 scikit-learn
+#!pip install -q datasets googletrans==4.0.0rc1 scikit-learn
 
 import pandas as pd
 from datasets import load_dataset
@@ -59,7 +59,7 @@ aug_texts, aug_labels = [], []
 # Lặp qua từng lớp trong tập train để tăng cường dữ liệu
 for cat in counter:
     # Lấy tất cả văn bản của lớp đó trong tập train
-    cat_texts = [t for t, l in zip(X_train, y_train) if l == cat]
+    cat_texts = [t for t, lb in zip(X_train, y_train) if lb == cat]
     n_current = len(cat_texts)
 
     if n_current > 0 and n_current < max_count:
@@ -68,7 +68,7 @@ for cat in counter:
             # Lặp lại các mẫu gốc của lớp đó để dịch
             original_text = cat_texts[i % n_current]
             translated_text = back_translate(original_text)
-            
+
             aug_texts.append(translated_text)
             aug_labels.append(cat)
 
