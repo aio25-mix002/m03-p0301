@@ -208,3 +208,6 @@ mlruns/
 
 # Jetbrains IDE
 .idea
+
+# CatBoost
+catboost_info/
