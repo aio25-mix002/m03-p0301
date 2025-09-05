@@ -10,6 +10,26 @@ confusion matrix.  Trained models and vectorisers are stored in
 ``st.session_state`` for reuse on the Live Prediction page.
 """
 
+
+import os
+from numpy import ndarray
+from src.modeling.models.classifier.decision_tree_classifier import (
+    DecisionTreeClassifier,
+)
+from src.modeling.models.classifier.gaussian_nb_classifier import GaussianNBClassifier
+from src.modeling.models.classifier.kmeans_classifier import KmeansClassifier
+from src.modeling.models.classifier.knn_classifier import KnnClassifier
+from src.modeling.visualization.plot_metrics import plot_confusion_matrix
+from src.app.states.app_state import get_app_state
+from src.modeling.models.text_encoder.bagofword_text_vectorizer import (
+    BagOfWordTextVectorizer,
+)
+from src.modeling.models.text_encoder.tfidf_text_vectorizer import TfidfTextVectorizer
+from src.modeling.models.text_encoder.wordembedding_encoder import (
+    WordEmbeddingTextVectorizer,
+)
+from src.app.services import dataset_service
+
 import os
 import seaborn as sns
 import hashlib
@@ -39,6 +59,15 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 from sklearn.utils.class_weight import compute_class_weight
+from sklearn.utils import resample
+from sklearn.cluster import KMeans
+from sklearn.ensemble import RandomForestClassifier, StackingClassifier, AdaBoostClassifier, GradientBoostingClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+import xgboost as xgb
+from catboost import CatBoostClassifier
+import lightgbm as lgb
 
 
 try:
@@ -302,6 +331,37 @@ def train_model(
             model.fit(X_train, y_train, sample_weight=sample_weight)
         else:
             model.fit(X_train, y_train)
+    elif model_name == "Random Forest":
+        model = RandomForestClassifier(n_estimators=400,random_state=42)
+        model.fit(X_train, y_train)
+    elif model_name == "AdaBoost":
+        model = AdaBoostClassifier(n_estimators=400,random_state=42, learning_rate = 0.1)
+        model.fit(X_train,y_train)
+    elif model_name == "Stacking":
+        model =  StackingClassifier(
+        estimators = [
+            ('knn', KNeighborsClassifier(n_neighbors = 5)),
+            ('rf',RandomForestClassifier(n_estimators=400,random_state=42)),
+            ('nb',GaussianNB())
+        ],
+        final_estimator = LogisticRegression(),
+        stack_method = 'predict_proba',
+        passthrough = False
+        )
+        dense_train = X_train.toarray() if hasattr(X_train, "toarray") else X_train
+        model.fit(dense_train,y_train)
+    elif model_name == "GradientBoost":
+        model = GradientBoostingClassifier(n_estimators=400,random_state=42, learning_rate = 0.01)
+        model.fit(X_train,y_train)
+    elif model_name == "XGBoost":
+        model = xgb.XGBClassifier(random_state=42, eta=0.01)
+        model.fit(X_train,y_train)
+    elif model_name == "LightBoost":
+        model = lgb.LGBMClassifier(learning_rate=0.01, n_estimators=400, random_state=42, verbose=-1)
+        model.fit(X_train,y_train)
+    elif model_name == "CatBoost":
+        model = CatBoostClassifier(iterations=100, verbose=0)
+        model.fit(X_train,y_train)
     elif model_name == "Naive Bayes":
         # Use MultinomialNB for text data to better handle frequency counts.  This
         # classifier supports class/sample weights via the ``sample_weight`` parameter.
@@ -325,7 +385,7 @@ def evaluate_model(model, model_name: str, X_test, y_test):
     Predict on the test data and compute accuracy, classification report and
     confusion matrix.  Handles dense conversion for MultinomialNB.
     """
-    if model_name == "Naive Bayes" and hasattr(X_test, "toarray"):
+    if ( model_name == "Naive Bayes" or model_name == "Stacking")and hasattr(X_test, "toarray"):
         y_pred = model.predict(X_test.toarray())
     else:
         y_pred = model.predict(X_test)
@@ -354,6 +414,23 @@ def evaluate_model(model, model_name: str, X_test, y_test):
     except Exception:
         auc = None
     return y_pred, accuracy, report, cm, f1, auc
+
+def plot_confusion_matrix(y_true, y_pred):
+  cm = confusion_matrix(y_true, y_pred)
+  cm_normalized = cm.astype('float') / cm.sum(axis = 1)[:,np.newaxis]
+  labels = np.unique(y_true)
+  annotations = np.empty_like(cm).astype(str)
+  for i in range(cm.shape[0]):
+    for j in range(cm.shape[1]):
+      raw = cm[i,j]
+      norm = cm_normalized[i,j]
+      annotations[i,j] = f"{raw}\n{norm:.2%}"
+  fig = plt.figure(figsize=(6,4))
+  sns.heatmap(cm,annot=annotations,fmt='',cmap="Blues", xticklabels = labels, yticklabels = labels, cbar = False, linewidths = 1, linecolor = 'black')
+  plt.xlabel('Predicted Label')
+  plt.ylabel('True Label')
+  plt.tight_layout()
+  st.pyplot(fig)
 
 
 st.title("Model Experiments")
@@ -391,6 +468,13 @@ with st.sidebar:
         "Decision Tree",
         "Naive Bayes",
         "Logistic Regression",
+        "Random Forest",
+        "Stacking",
+        "AdaBoost",
+        "GradientBoost",
+        #"XGBoost",
+        #"LightBoost",
+        "CatBoost"
     ]
     model_choice = st.selectbox("Model", model_options)
 
@@ -405,9 +489,9 @@ with st.sidebar:
     imb_method = st.selectbox("Imbalance Method", imbalance_options)
 
 # Main content area
-col1, col2 = st.columns([2, 1])
+col_1, col_2 = st.columns([3,1])
 
-with col1:
+with col_1:
     st.header("Model Training & Evaluation")
 
     # Load data button
@@ -459,11 +543,9 @@ with col1:
                     sample_weight = None
 
                     if imb_method == "Class Weights":
-                        classes = np.unique(y_train)
-                        weights = compute_class_weight(
-                            "balanced", classes=classes, y=y_train
-                        )
-                        class_weight = dict(zip(classes, weights))
+                        classes_train = np.unique(y_train)
+                        weights = compute_class_weight('balanced', classes=classes_train, y=y_train)
+                        class_weight = dict(zip(classes_train, weights))
 
                     # Model parameters
                     params = {}
@@ -491,6 +573,24 @@ with col1:
 
                     st.success("Model trained successfully!")
 
+                    st.subheader("Parameter")
+                    st.write(model.get_params())
+
+                    if model_choice == "Random Forest":
+                        st.subheader("Important features")
+
+                        features = model.feature_importances_
+                        N = min(20, len(features))
+                        sorted_idx = np.argsort(features)[-N:]
+
+                        fig = plt.figure(figsize=(10, max(6, 0.35 * N)))
+                        plt.barh(
+                            vectorizer.get_feature_names_out()[sorted_idx],
+                            features[sorted_idx]
+                        )
+                        plt.show()
+                        st.pyplot(fig)
+
                 except Exception as e:
                     st.error(f"Error training model: {str(e)}")
 
@@ -505,10 +605,11 @@ with col1:
         else:
             with st.spinner("Evaluating model..."):
                 try:
-                    model = st.session_state["trained_model"]
-                    model_name = st.session_state["model_name"]
-                    X_test = st.session_state["X_test"]
-                    y_test = st.session_state["y_test"]
+                    model = st.session_state['trained_model']
+                    model_name = st.session_state['model_name']
+                    X_test = st.session_state['X_test']
+                    y_test = st.session_state['y_test']
+                    classes_test = np.unique(y_test)
 
                     # Evaluate model
                     y_pred, accuracy, report, cm, f1, auc = evaluate_model(
@@ -526,6 +627,7 @@ with col1:
                     with col13:
                         st.metric("ROC-AUC", f"{auc:.4f}" if auc else "N/A")
 
+
                     # Classification report
                     st.subheader("Classification Report")
                     report_df = pd.DataFrame(report).transpose()
@@ -533,16 +635,12 @@ with col1:
 
                     # Confusion matrix
                     st.subheader("Confusion Matrix")
-                    fig, ax = plt.subplots(figsize=(8, 6))
-                    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
-                    ax.set_xlabel("Predicted")
-                    ax.set_ylabel("Actual")
-                    st.pyplot(fig)
+                    plot_confusion_matrix(y_test,y_pred)
 
                 except Exception as e:
                     st.error(f"Error evaluating model: {str(e)}")
 
-with col2:
+with col_2:
     st.header("Model Status")
 
     # Show current configuration

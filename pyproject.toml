@@ -24,6 +24,9 @@ dependencies = [
     "imbalanced-learn",
     "faiss-cpu>=1.7.4", # or "faiss-gpu" for GPU support
     # "faiss-gpu==1.7.2"
+    "xgboost>=3.0.4",
+    "catboost>=1.2.8",
+    "lightgbm>=4.6.0",
     "googletrans>=4.0.2",
 ]
 
