@@ -150,6 +150,20 @@ def _preprocess_sample(data: list[dict]) -> list[DatasetItem]:
 
     return preprocessed_samples
 
+def _build_dataset_metadata(samples: list[DatasetItem]) -> DatasetMetadata:
+    # Generate metadata
+    labels = set([s.label for s in samples])
+
+    # Sort and print unique labels
+    sorted_labels = sorted(labels)
+
+    metadata = DatasetMetadata(
+        sorted_labels=sorted_labels,
+        label_to_id={label: i for i, label in enumerate(sorted_labels)},
+        id_to_label={i: label for i, label in enumerate(sorted_labels)},
+    )
+    return metadata
+
 
 def load_augmented_back_translation(train_path: str, test_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load pre‑split augmented training set and untouched test set for back translation.
@@ -315,24 +329,16 @@ def transform_data_advanced(data, rare_threshold: int = 2):
         Logger.info(f"Advanced text: {sample.text}")
         Logger.info("#" * 20 + "\n")
 
-    return processed_samples
+    processed_metadata = _build_dataset_metadata(processed_samples)
+
+    return processed_samples,processed_metadata
 
 
 def transform_data(data: list[dict]) -> tuple[list[DatasetItem], DatasetMetadata]:
     # Preprocess data
     preprocessed_samples = _preprocess_sample(data)
 
-    # Generate metadata
-    labels = set([s.label for s in preprocessed_samples])
-
-    # Sort and print unique labels
-    sorted_labels = sorted(labels)
-
-    preprocessed_metadata = DatasetMetadata(
-        sorted_labels=sorted_labels,
-        label_to_id={label: i for i, label in enumerate(sorted_labels)},
-        id_to_label={i: label for i, label in enumerate(sorted_labels)},
-    )
+    preprocessed_metadata = _build_dataset_metadata(preprocessed_samples)
 
     return preprocessed_samples, preprocessed_metadata
 

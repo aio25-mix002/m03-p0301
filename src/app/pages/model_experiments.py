@@ -409,8 +409,8 @@ def plot_confusion_matrix(y_true, y_pred):
       raw = cm[i,j]
       norm = cm_normalized[i,j]
       annotations[i,j] = f"{raw}\n{norm:.2%}"
-  fig = plt.figure(figsize=(6,4))
-  sns.heatmap(cm,annot=annotations,fmt='',cmap="Blues", xticklabels = labels, yticklabels = labels, cbar = False, linewidths = 1, linecolor = 'black')
+  fig = plt.figure(figsize=(5,4))
+  sns.heatmap(cm,annot=annotations,fmt='',cmap="Blues", xticklabels = labels, yticklabels = labels, cbar = False, linewidths = 1, linecolor = 'black', annot_kws={"size": 9})
   plt.xlabel('Predicted Label')
   plt.ylabel('True Label')
   plt.tight_layout()
@@ -557,10 +557,10 @@ with col_1:
                         st.subheader("Important features")
 
                         features = model.feature_importances_
-                        N = min(20, len(features))
+                        N = min(10, len(features))
                         sorted_idx = np.argsort(features)[-N:]
 
-                        fig = plt.figure(figsize=(10, max(6, 0.35 * N)))
+                        fig = plt.figure(figsize=(6, max(3, 0.3 * N)))
                         plt.barh(
                             vectorizer.get_feature_names_out()[sorted_idx],
                             features[sorted_idx]
