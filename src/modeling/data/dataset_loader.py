@@ -44,7 +44,7 @@ def extract_samples(
 # New: extract a balanced set of samples from the dataset.
 #
 # The original ``extract_samples`` method returns up to 1 000 records
-# matching a predefined list of high‑level arXiv categories (e.g. ``"cs"`` or
+# matching a predefined list of high-level arXiv categories (e.g. ``"cs"`` or
 # ``"physics"``).  However, the resulting dataset can still be imbalanced if one
 # category dominates.  Handling class imbalance at the data level is an
 # effective strategy because it presents the model with roughly equal
@@ -52,7 +52,7 @@ def extract_samples(
 # function iterates through the HuggingFace dataset and collects up to
 # ``samples_per_class`` examples per category in ``CATEGORIES_TO_SELECT``.  If
 # ``samples_per_class`` is not specified, the minimum available count across
-# categories is used to maximise balance.  Only single‑label records are kept,
+# categories is used to maximise balance.  Only single-label records are kept,
 # mirroring the behaviour of ``extract_samples``.
 def extract_balanced_samples(data: DatasetDict, samples_per_class: int | None = None) -> list:
     """Return a balanced subset of the dataset.
@@ -64,21 +64,21 @@ def extract_balanced_samples(data: DatasetDict, samples_per_class: int | None = 
 
     Returns:
         A list of raw dataset records with roughly equal representation from each
-        high‑level category in ``CATEGORIES_TO_SELECT``.
+        high-level category in ``CATEGORIES_TO_SELECT``.
     """
-    # High‑level categories to include – keep consistent with ``extract_samples``
+    # High-level categories to include – keep consistent with ``extract_samples``
     CATEGORIES_TO_SELECT = ["astro-ph", "cond-mat", "cs", "math", "physics"]
     # Dictionary to accumulate samples per category
     by_category: dict[str, list] = {cat: [] for cat in CATEGORIES_TO_SELECT}
 
-    # First pass: gather all candidates (single‑label only)
+    # First pass: gather all candidates (single-label only)
     for record in data["train"]:
         # keep only abstracts with a single category
         category_tokens = record["categories"].strip().split(" ")
         if len(category_tokens) != 1:
             continue
 
-        # extract the high‑level category (text before the period)
+        # extract the high-level category (text before the period)
         high_level = category_tokens[0].split(".")[0]
         if high_level not in by_category:
             continue
@@ -166,7 +166,7 @@ def _build_dataset_metadata(samples: list[DatasetItem]) -> DatasetMetadata:
 
 
 def load_augmented_back_translation(train_path: str, test_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load pre‑split augmented training set and untouched test set for back translation.
+    """Load pre-split augmented training set and untouched test set for back translation.
 
     This helper is used when back translation is performed externally.  The
     function expects two CSV files: one containing the augmented training
@@ -204,9 +204,9 @@ def load_augmented_back_translation(train_path: str, test_path: str) -> tuple[pd
 #   stemming using the Snowball stemmer as a fallback.
 # * Filtering out rare words based on a frequency threshold computed across
 #   the dataset (default: 2 occurrences).
-# * Detecting frequent bigrams (two‑word phrases) and joining them with an
+# * Detecting frequent bigrams (two-word phrases) and joining them with an
 #   underscore when they appear at least ``rare_threshold`` times.  This
-#   captures multi‑word expressions such as ``machine_learning``.
+#   captures multi-word expressions such as ``machine_learning``.
 #
 # To use this preprocessing pipeline, call ``transform_data_advanced(raw_data)``
 # instead of ``transform_data`` when loading the dataset in your Streamlit

@@ -2,9 +2,9 @@
 Streamlit page for loading, cleaning and visualising the arXiv abstract dataset.
 
 This page uses helper functions from ``modeling.data.dataset_loader`` to fetch a
-subset of the UniverseTBD/arxiv‑abstracts‑large dataset, apply basic text
+subset of the UniverseTBD/arxiv-abstracts-large dataset, apply basic text
 preprocessing and display both the raw and processed data along with a simple
-label distribution.  By caching the loading routine we avoid re‑downloading
+label distribution.  By caching the loading routine we avoid re-downloading
 the dataset on every page refresh.
 """
 
@@ -16,7 +16,7 @@ from src.modeling.data import dataset_loader
 @st.cache_data(show_spinner=True)
 def load_and_preprocess():
     """
-    Load the arXiv dataset, extract 1000 single‑label samples and apply
+    Load the arXiv dataset, extract 1000 single-label samples and apply
     preprocessing (strip whitespace/newlines, remove punctuation and digits,
     lowercase).  Returns both the raw samples and a list of ``DatasetItem``s.
 

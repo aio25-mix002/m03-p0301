@@ -1,7 +1,7 @@
 from src.modeling.data.dataset import DatasetMetadata
 from src.modeling.models.classifier.classifier_base import ClassifierBase
 from sklearn.metrics import accuracy_score, classification_report
-from sklearn.ensemble import RandomForestClassifier, StackingClassifier
+from sklearn.ensemble import RandomForestClassifier, StackingClassifier as SKStackingClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
@@ -16,7 +16,7 @@ class StackingClassifier(ClassifierBase):
     def train_test(
         self, x_train, y_train, x_test, y_test, dataset_metadata: DatasetMetadata
     ) -> tuple[int, float, classification_report]:
-        sc =  StackingClassifier(
+        sc =  SKStackingClassifier(
         estimators = [
             ('knn', KNeighborsClassifier(n_neighbors = 5)),
             ('rf',RandomForestClassifier(n_estimators=400,random_state=SETTINGS.random_state)),

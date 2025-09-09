@@ -1,30 +1,7 @@
-import os
-from numpy import ndarray
-from src.modeling.models.classifier.decision_tree_classifier import (
-    DecisionTreeClassifier,
-)
-from src.modeling.models.classifier.gaussian_nb_classifier import GaussianNBClassifier
-from src.modeling.models.classifier.kmeans_classifier import KmeansClassifier
-from src.modeling.models.classifier.knn_classifier import KnnClassifier
-from src.modeling.visualization.plot_metrics import plot_confusion_matrix
-from src.app.states.app_state import get_app_state
-from src.modeling.models.text_encoder.bagofword_text_vectorizer import (
-    BagOfWordTextVectorizer,
-)
-from src.modeling.models.text_encoder.tfidf_text_vectorizer import TfidfTextVectorizer
-from src.modeling.models.text_encoder.wordembedding_encoder import (
-    WordEmbeddingTextVectorizer,
-)
-
-#from src.modeling.models.classifier.adaboost_classifier import AdaBoostClassifier
-#from src.modeling.models.classifier.stacking import StackingClassifier
-#from src.modeling.models.classifier.random_forest_classifier import RandomForestClassifier
-
-from src.app.services import dataset_service
 """
 Streamlit page for training and evaluating classification models on arXiv
-abstracts.  Users can choose the type of text vectorisation (Bag‑of‑Words or
-TF‑IDF), the classification algorithm (K‑Nearest Neighbours, Decision Tree,
+abstracts.  Users can choose the type of text vectorisation (Bag-of-Words or
+TF-IDF), the classification algorithm (K-Nearest Neighbours, Decision Tree,
 Naive Bayes or Logistic Regression) and the method for handling class
 imbalance.  The page splits the preprocessed data into training and testing
 subsets, optionally performs oversampling or computes class weights, trains
@@ -33,12 +10,16 @@ confusion matrix.  Trained models and vectorisers are stored in
 ``st.session_state`` for reuse on the Live Prediction page.
 """
 
+import os
+from src.app.states.app_state import get_app_state
+
+import seaborn as sns
+import hashlib
+
 import streamlit as st
 from src.configuration.configuration_manager import ConfigurationManager
 import matplotlib.pyplot as plt
 
-SETTINGS = ConfigurationManager.load()
-app_state = get_app_state()
 import pandas as pd
 import numpy as np
 from src.modeling.data import dataset_loader
@@ -46,11 +27,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
 from sklearn.pipeline import make_pipeline
-try:
-    # Optional import for embedding vectoriser
-    from modeling.data.embedding_vectorizer import EmbeddingVectorizer, FAISSEmbeddingVectorizer
-except ImportError:
-    EmbeddingVectorizer = None  # type: ignore[misc]
+
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.naive_bayes import MultinomialNB
@@ -61,19 +38,28 @@ from sklearn.metrics import (
     confusion_matrix,
     f1_score,
     roc_auc_score,
-    silhouette_score,
-    davies_bouldin_score,
 )
 from sklearn.utils.class_weight import compute_class_weight
-from sklearn.utils import resample
-from sklearn.cluster import KMeans
-from sklearn.ensemble import RandomForestClassifier, StackingClassifier, AdaBoostClassifier, GradientBoostingClassifier
+from sklearn.ensemble import (
+    RandomForestClassifier,
+    StackingClassifier,
+    AdaBoostClassifier,
+    GradientBoostingClassifier,
+)
 from sklearn.naive_bayes import GaussianNB
-from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
 import xgboost as xgb
 from catboost import CatBoostClassifier
 import lightgbm as lgb
+
+
+try:
+    # Optional import for embedding vectoriser
+    from modeling.data.embedding_vectorizer import (
+        EmbeddingVectorizer,
+        FAISSEmbeddingVectorizer,
+    )
+except ImportError:
+    EmbeddingVectorizer = None  # type: ignore[misc]
 
 # Optional imports for advanced oversampling techniques
 try:
@@ -81,11 +67,10 @@ try:
 except ImportError:  # pragma: no cover
     SMOTE = None  # type: ignore[assignment]
     ADASYN = None  # type: ignore[assignment]
-import seaborn as sns
-import matplotlib.pyplot as plt
-import joblib
-import os
-import hashlib
+
+
+SETTINGS = ConfigurationManager.load()
+app_state = get_app_state()
 
 
 @st.cache_data(show_spinner=True)
@@ -116,29 +101,36 @@ def load_preprocessed_dataframe(
     if balanced:
         raw_samples = dataset_loader.extract_balanced_samples(data)
     else:
-        raw_samples = dataset_loader.extract_samples(data, top_n=1000, categories_to_select=["astro-ph", "cond-mat", "cs", "math", "physics"])
+        raw_samples = dataset_loader.extract_samples(
+            data,
+            top_n=1000,
+            categories_to_select=["astro-ph", "cond-mat", "cs", "math", "physics"],
+        )
     if advanced:
         processed = dataset_loader.transform_data_advanced(raw_samples)
     else:
         processed = dataset_loader.transform_data(raw_samples)
-    return pd.DataFrame([{"text": item.text, "label": item.label} for item in processed[0]])
+    return pd.DataFrame(
+        [{"text": item.text, "label": item.label} for item in processed[0]]
+    )
 
 
 # -----------------------------------------------------------------------------
 # Back translation data loader
 # -----------------------------------------------------------------------------
 
+
 @st.cache_data(show_spinner=True)
 def load_backtranslated_dataframe(file_path: str) -> pd.DataFrame:
     """
-    Load a back‑translated balanced dataset from a CSV file.  The CSV file must
+    Load a back-translated balanced dataset from a CSV file.  The CSV file must
     contain two columns: ``text`` and ``label``.  The returned DataFrame
     includes these columns for downstream processing.
 
     Parameters
     ----------
     file_path : str
-        Path to the CSV file containing back‑translated data.
+        Path to the CSV file containing back-translated data.
 
     Returns
     -------
@@ -159,22 +151,22 @@ def load_backtranslated_dataframe(file_path: str) -> pd.DataFrame:
 
 def get_vectoriser(method: str):
     """Return a vectoriser instance based on the chosen method."""
-    if method == "Bag‑of‑Words (BoW)":
+    if method == "Bag-of-Words (BoW)":
         return CountVectorizer(max_features=5000, stop_words="english")
-    elif method == "TF‑IDF":
+    elif method == "TF-IDF":
         return TfidfVectorizer(max_features=5000, stop_words="english")
     elif method == "Embeddings (LSA)":
-        # Latent Semantic Analysis (LSA) using truncated SVD on top of TF‑IDF.
+        # Latent Semantic Analysis (LSA) using truncated SVD on top of TF-IDF.
         # The recommended dimensionality for LSA is around 100 components
-        # according to the scikit‑learn documentation【574126161724658†L670-L704】.
+        # according to the scikit-learn documentation【574126161724658†L670-L704】.
         # We construct a Pipeline so that ``fit_transform`` and ``transform``
-        # automatically perform both the TF‑IDF vectorisation and the SVD
+        # automatically perform both the TF-IDF vectorisation and the SVD
         # projection.  The Pipeline behaves like a standard vectoriser.
         tfidf = TfidfVectorizer(max_features=5000, stop_words="english")
         svd = TruncatedSVD(n_components=100, random_state=42)
         return make_pipeline(tfidf, svd)
     elif method == "Sentence Embeddings (E5)":
-        # Use a pre‑trained sentence transformer to compute dense embeddings.
+        # Use a pre-trained sentence transformer to compute dense embeddings.
         # Instantiation is wrapped in a try/except because EmbeddingVectorizer
         # will raise an ImportError if `sentence_transformers` is missing.
         if EmbeddingVectorizer is None:
@@ -183,11 +175,11 @@ def get_vectoriser(method: str):
             return EmbeddingVectorizer()
         except ImportError:
             return None
-    elif method == "Fusion (TF‑IDF + LSA)":
-        # Combine TF‑IDF and LSA representations by concatenating their feature
-        # vectors.  We build two pipelines: one for TF‑IDF and one for LSA (TF‑IDF
+    elif method == "Fusion (TF-IDF + LSA)":
+        # Combine TF-IDF and LSA representations by concatenating their feature
+        # vectors.  We build two pipelines: one for TF-IDF and one for LSA (TF-IDF
         # followed by TruncatedSVD), then use a custom wrapper to produce a
-        # concatenated feature matrix.  Since scikit‑learn's FeatureUnion can
+        # concatenated feature matrix.  Since scikit-learn's FeatureUnion can
         # handle this seamlessly with sparse matrices, we use it here.  Note
         # that this representation may have higher dimensionality than either
         # individual method.
@@ -198,28 +190,31 @@ def get_vectoriser(method: str):
             TfidfVectorizer(max_features=5000, stop_words="english"),
             TruncatedSVD(n_components=100, random_state=42),
         )
-        return FeatureUnion([
-            ("tfidf", tfidf),
-            ("lsa", lsa),
-        ])
-    elif method == 'Embedding with FAISS index':
+        return FeatureUnion(
+            [
+                ("tfidf", tfidf),
+                ("lsa", lsa),
+            ]
+        )
+    elif method == "Embedding with FAISS index":
+
         @st.cache_resource
         def get_faiss_vectorizer():
             """Get cached FAISS vectorizer"""
             return FAISSEmbeddingVectorizer(
-                model_name='intfloat/multilingual-e5-base',
+                model_name="intfloat/multilingual-e5-base",
                 cache_dir="./cache/faiss",
-                index_type="flat"  # or "ivf", "hnsw"
+                index_type="flat",  # or "ivf", "hnsw"
             )
-            
+
         @st.cache_data
-        def build_faiss_index(texts, mode='passage'):
+        def build_faiss_index(texts, mode="passage"):
             """Build and cache FAISS index"""
             vectorizer = get_faiss_vectorizer()
             return vectorizer.build_index_from_texts(texts, mode)
 
         vectorizer = get_faiss_vectorizer()
-        
+
         return vectorizer
     else:
         raise ValueError(f"Unknown vectorisation method: {method}")
@@ -290,13 +285,13 @@ def train_model(
     dictionary may include hyperparameters such as ``n_neighbors`` for KNN or
     ``max_depth`` for Decision Tree.  Models are fitted on the provided
     training data.  Additional arguments ``class_weight`` and ``sample_weight``
-    allow the caller to handle imbalanced datasets via cost‑sensitive learning or
-    per‑sample weighting.  For MultinomialNB the input must be dense when using
+    allow the caller to handle imbalanced datasets via cost-sensitive learning or
+    per-sample weighting.  For MultinomialNB the input must be dense when using
     sparse matrices for certain operations.
 
     Returns the trained model instance.
     """
-    if model_name == "K‑Nearest Neighbours (KNN)":
+    if model_name == "K-Nearest Neighbours (KNN)":
         n_neighbors = params.get("n_neighbors", 5)
         weighted = params.get("weighted", False)
         weight_type = "distance" if weighted else "uniform"
@@ -319,36 +314,40 @@ def train_model(
         else:
             model.fit(X_train, y_train)
     elif model_name == "Random Forest":
-        model = RandomForestClassifier(n_estimators=400,random_state=42)
+        model = RandomForestClassifier(n_estimators=400, random_state=42)
         model.fit(X_train, y_train)
     elif model_name == "AdaBoost":
-        model = AdaBoostClassifier(n_estimators=400,random_state=42, learning_rate = 0.1)
-        model.fit(X_train,y_train)
+        model = AdaBoostClassifier(n_estimators=400, random_state=42, learning_rate=0.1)
+        model.fit(X_train, y_train)
     elif model_name == "Stacking":
-        model =  StackingClassifier(
-        estimators = [
-            ('knn', KNeighborsClassifier(n_neighbors = 5)),
-            ('rf',RandomForestClassifier(n_estimators=400,random_state=42)),
-            ('nb',GaussianNB())
-        ],
-        final_estimator = LogisticRegression(),
-        stack_method = 'predict_proba',
-        passthrough = False
+        model = StackingClassifier(
+            estimators=[
+                ("knn", KNeighborsClassifier(n_neighbors=5)),
+                ("rf", RandomForestClassifier(n_estimators=400, random_state=42)),
+                ("nb", GaussianNB()),
+            ],
+            final_estimator=LogisticRegression(),
+            stack_method="predict_proba",
+            passthrough=False,
         )
         dense_train = X_train.toarray() if hasattr(X_train, "toarray") else X_train
-        model.fit(dense_train,y_train)
+        model.fit(dense_train, y_train)
     elif model_name == "GradientBoost":
-        model = GradientBoostingClassifier(n_estimators=400,random_state=42, learning_rate = 0.01)
-        model.fit(X_train,y_train)
+        model = GradientBoostingClassifier(
+            n_estimators=400, random_state=42, learning_rate=0.01
+        )
+        model.fit(X_train, y_train)
     elif model_name == "XGBoost":
         model = xgb.XGBClassifier(random_state=42, eta=0.01)
-        model.fit(X_train,y_train)
+        model.fit(X_train, y_train)
     elif model_name == "LightBoost":
-        model = lgb.LGBMClassifier(learning_rate=0.01, n_estimators=400, random_state=42, verbose=-1)
-        model.fit(X_train,y_train)
+        model = lgb.LGBMClassifier(
+            learning_rate=0.01, n_estimators=400, random_state=42, verbose=-1
+        )
+        model.fit(X_train, y_train)
     elif model_name == "CatBoost":
         model = CatBoostClassifier(iterations=100, verbose=0)
-        model.fit(X_train,y_train)
+        model.fit(X_train, y_train)
     elif model_name == "Naive Bayes":
         # Use MultinomialNB for text data to better handle frequency counts.  This
         # classifier supports class/sample weights via the ``sample_weight`` parameter.
@@ -372,7 +371,9 @@ def evaluate_model(model, model_name: str, X_test, y_test):
     Predict on the test data and compute accuracy, classification report and
     confusion matrix.  Handles dense conversion for MultinomialNB.
     """
-    if ( model_name == "Naive Bayes" or model_name == "Stacking")and hasattr(X_test, "toarray"):
+    if (model_name == "Naive Bayes" or model_name == "Stacking") and hasattr(
+        X_test, "toarray"
+    ):
         y_pred = model.predict(X_test.toarray())
     else:
         y_pred = model.predict(X_test)
@@ -385,19 +386,23 @@ def evaluate_model(model, model_name: str, X_test, y_test):
         f1 = f1_score(y_test, y_pred, average="macro")
     except Exception:
         f1 = None
-    # Compute ROC‑AUC (macro) if the model exposes predict_proba
+    # Compute ROC-AUC (macro) if the model exposes predict_proba
     auc = None
     try:
         if hasattr(model, "predict_proba"):
-            proba = model.predict_proba(X_test if model_name != "Naive Bayes" else X_test.toarray())
+            proba = model.predict_proba(
+                X_test if model_name != "Naive Bayes" else X_test.toarray()
+            )
             # Binarise y_test
             from sklearn.preprocessing import label_binarize
+
             classes = np.unique(y_test)
             y_bin = label_binarize(y_test, classes=classes)
             auc = roc_auc_score(y_bin, proba, average="macro", multi_class="ovo")
     except Exception:
         auc = None
     return y_pred, accuracy, report, cm, f1, auc
+
 
 def plot_confusion_matrix(y_true, y_pred):
   cm = confusion_matrix(y_true, y_pred)
@@ -418,7 +423,7 @@ def plot_confusion_matrix(y_true, y_pred):
 
 
 st.title("Model Experiments")
-st.write("Welcome to the Model Experiments Page!")
+# st.write("Welcome to the Model Experiments Page!")
 # Add this to the end of model_experiments.py (after line 362)
 
 # Main UI Layout
@@ -427,28 +432,28 @@ st.markdown("---")
 # Sidebar for configuration
 with st.sidebar:
     st.header("Configuration")
-    
+
     # Data loading options
     st.subheader("Data Options")
     use_balanced = st.checkbox("Use Balanced Dataset", value=False)
     use_advanced_preprocessing = st.checkbox("Advanced Preprocessing", value=False)
-    
+
     # Vectorization method
     st.subheader("Text Vectorization")
     vectorization_methods = [
-        "Bag‑of‑Words (BoW)",
-        "TF‑IDF", 
+        "Bag-of-Words (BoW)",
+        "TF-IDF",
         "Embeddings (LSA)",
         "Sentence Embeddings (E5)",
-        "Fusion (TF‑IDF + LSA)",
-        "Embedding with FAISS index"
+        "Fusion (TF-IDF + LSA)",
+        "Embedding with FAISS index",
     ]
     vec_method = st.selectbox("Vectorization Method", vectorization_methods)
-    
+
     # Model selection
     st.subheader("Classification Model")
     model_options = [
-        "K‑Nearest Neighbours (KNN)",
+        "K-Nearest Neighbours (KNN)",
         "Decision Tree",
         "Naive Bayes",
         "Logistic Regression",
@@ -456,98 +461,107 @@ with st.sidebar:
         "Stacking",
         "AdaBoost",
         "GradientBoost",
-        #"XGBoost",
-        #"LightBoost",
-        "CatBoost"
+        # "XGBoost",
+        # "LightBoost",
+        "CatBoost",
     ]
     model_choice = st.selectbox("Model", model_options)
-    
+
     # Imbalance handling
     st.subheader("Class Imbalance Handling")
     imbalance_options = [
         "None",
         "Class Weights",
         "Oversampling (SMOTE)",
-        "Oversampling (ADASYN)"
+        "Oversampling (ADASYN)",
     ]
     imb_method = st.selectbox("Imbalance Method", imbalance_options)
 
 # Main content area
-col_1, col_2 = st.columns([3,1])
+col_1, col_2 = st.columns([3, 1])
 
 with col_1:
     st.header("Model Training & Evaluation")
-    
+
     # Load data button
     if st.button("Load Dataset", type="primary"):
         with st.spinner("Loading dataset..."):
             try:
                 df = load_preprocessed_dataframe(
-                    balanced=use_balanced, 
-                    advanced=use_advanced_preprocessing
+                    balanced=use_balanced, advanced=use_advanced_preprocessing
                 )
-                st.session_state['dataset'] = df
+                st.session_state["dataset"] = df
                 st.success(f"Dataset loaded: {len(df)} samples")
-                st.write(f"**Class distribution:**")
-                st.write(df['label'].value_counts())
+                st.write("**Class distribution:**")
+                st.write(df["label"].value_counts())
             except Exception as e:
                 st.error(f"Error loading dataset: {str(e)}")
-    
+
     # Train model button
-    if st.button("Train Model", type="primary", disabled='dataset' not in st.session_state):
-        if 'dataset' not in st.session_state:
+    if st.button(
+        "Train Model", type="primary", disabled="dataset" not in st.session_state
+    ):
+        if "dataset" not in st.session_state:
             st.error("Please load dataset first!")
         else:
             with st.spinner("Training model..."):
                 try:
                     # Get dataset
-                    df = st.session_state['dataset']
-                    
+                    df = st.session_state["dataset"]
+
                     # Split data
-                    X = df['text'].tolist()
-                    y = df['label'].tolist()
+                    X = df["text"].tolist()
+                    y = df["label"].tolist()
                     X_train, X_test, y_train, y_test = train_test_split(
                         X, y, test_size=0.2, random_state=42, stratify=y
                     )
-                    
+
                     # Get vectorizer
                     vectorizer = get_vectoriser(vec_method)
                     if vectorizer is None:
                         st.error(f"Vectorizer {vec_method} not available")
                         st.stop()
-                    
+
                     # Fit vectorizer and transform data
-                    X_train_vec, X_test_vec = fit_vectoriser(vectorizer, X_train, X_test)
-                    
+                    X_train_vec, X_test_vec = fit_vectoriser(
+                        vectorizer, X_train, X_test
+                    )
+
                     # Handle class imbalance
                     class_weight = None
                     sample_weight = None
-                    
+
                     if imb_method == "Class Weights":
                         classes_train = np.unique(y_train)
-                        weights = compute_class_weight('balanced', classes=classes_train, y=y_train)
+                        weights = compute_class_weight(
+                            "balanced", classes=classes_train, y=y_train
+                        )
                         class_weight = dict(zip(classes_train, weights))
-                    
+
                     # Model parameters
                     params = {}
-                    if model_choice == "K‑Nearest Neighbours (KNN)":
+                    if model_choice == "K-Nearest Neighbours (KNN)":
                         params = {"n_neighbors": 5, "weighted": False}
                     elif model_choice == "Decision Tree":
                         params = {"max_depth": None, "min_samples_leaf": 1}
-                    
+
                     # Train model
                     model = train_model(
-                        model_choice, X_train_vec, y_train, params,
-                        class_weight=class_weight, sample_weight=sample_weight
+                        model_choice,
+                        X_train_vec,
+                        y_train,
+                        params,
+                        class_weight=class_weight,
+                        sample_weight=sample_weight,
                     )
-                    
+
                     # Store in session state
-                    st.session_state['trained_model'] = model
-                    st.session_state['vectorizer'] = vectorizer
-                    st.session_state['X_test'] = X_test_vec
-                    st.session_state['y_test'] = y_test
-                    st.session_state['model_name'] = model_choice
-                    
+                    st.session_state["trained_model"] = model
+                    st.session_state["vectorizer"] = vectorizer
+                    st.session_state["X_test"] = X_test_vec
+                    st.session_state["y_test"] = y_test
+                    st.session_state["model_name"] = model_choice
+
                     st.success("Model trained successfully!")
 
                     st.subheader("Parameter")
@@ -563,76 +577,86 @@ with col_1:
                         fig = plt.figure(figsize=(6, max(3, 0.3 * N)))
                         plt.barh(
                             vectorizer.get_feature_names_out()[sorted_idx],
-                            features[sorted_idx]
+                            features[sorted_idx],
                         )
                         plt.show()
                         st.pyplot(fig)
-                    
+
                 except Exception as e:
                     st.error(f"Error training model: {str(e)}")
-    
+
     # Evaluate model button
-    if st.button("Evaluate Model", type="secondary", disabled='trained_model' not in st.session_state):
-        if 'trained_model' not in st.session_state:
+    if st.button(
+        "Evaluate Model",
+        type="secondary",
+        disabled="trained_model" not in st.session_state,
+    ):
+        if "trained_model" not in st.session_state:
             st.error("Please train a model first!")
         else:
             with st.spinner("Evaluating model..."):
                 try:
-                    model = st.session_state['trained_model']
-                    model_name = st.session_state['model_name']
-                    X_test = st.session_state['X_test']
-                    y_test = st.session_state['y_test']
+                    model = st.session_state["trained_model"]
+                    model_name = st.session_state["model_name"]
+                    X_test = st.session_state["X_test"]
+                    y_test = st.session_state["y_test"]
                     classes_test = np.unique(y_test)
-                    
+
                     # Evaluate model
                     y_pred, accuracy, report, cm, f1, auc = evaluate_model(
                         model, model_name, X_test, y_test
                     )
-                    
+
                     # Display results
                     st.subheader("Evaluation Results")
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
+
+                    col11, col12, col13 = st.columns(3)
+                    with col11:
                         st.metric("Accuracy", f"{accuracy:.4f}")
-                    with col2:
+                    with col12:
                         st.metric("F1 Score", f"{f1:.4f}" if f1 else "N/A")
-                    with col3:
+                    with col13:
                         st.metric("ROC-AUC", f"{auc:.4f}" if auc else "N/A")
 
-                    
                     # Classification report
                     st.subheader("Classification Report")
                     report_df = pd.DataFrame(report).transpose()
                     st.dataframe(report_df)
-                    
+
                     # Confusion matrix
                     st.subheader("Confusion Matrix")
-                    plot_confusion_matrix(y_test,y_pred)
-                    
+                    plot_confusion_matrix(y_test, y_pred)
+
                 except Exception as e:
                     st.error(f"Error evaluating model: {str(e)}")
 
 with col_2:
     st.header("Model Status")
-    
+
     # Show current configuration
     st.subheader("Current Configuration")
-    if 'dataset' in st.session_state:
+    if "dataset" in st.session_state:
         st.success("✅ Dataset Loaded")
         st.write(f"Samples: {len(st.session_state['dataset'])}")
     else:
         st.info("⏳ No dataset loaded")
-    
-    if 'trained_model' in st.session_state:
+
+    if "trained_model" in st.session_state:
         st.success("✅ Model Trained")
         st.write(f"Model: {st.session_state['model_name']}")
     else:
         st.info("⏳ No model trained")
-    
+
     # Clear session state
     if st.button("Clear All", type="secondary"):
-        for key in ['dataset', 'trained_model', 'vectorizer', 'X_test', 'y_test', 'model_name']:
+        for key in [
+            "dataset",
+            "trained_model",
+            "vectorizer",
+            "X_test",
+            "y_test",
+            "model_name",
+        ]:
             if key in st.session_state:
                 del st.session_state[key]
         st.success("Session cleared!")

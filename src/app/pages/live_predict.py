@@ -54,12 +54,12 @@ else:
                 f"**Xử lý mất cân bằng:** {imbalance_name}"
             )
 
-            # Attempt a simple explanation for linear models with BoW/TF‑IDF.
+            # Attempt a simple explanation for linear models with BoW/TF-IDF.
             explanation = None
             try:
                 base_vect = vectoriser
-                # If the vectoriser is a Pipeline (e.g., TF‑IDF + SVD or FeatureUnion),
-                # attempt to extract the underlying TF‑IDF or CountVectorizer to get feature names.
+                # If the vectoriser is a Pipeline (e.g., TF-IDF + SVD or FeatureUnion),
+                # attempt to extract the underlying TF-IDF or CountVectorizer to get feature names.
                 if hasattr(vectoriser, "named_steps"):
                     # Pipelines expose steps in named_steps.  Use the first step that has
                     # get_feature_names_out if available.
@@ -91,7 +91,7 @@ else:
                         top_indices = np.argsort(contributions)[::-1]
                         explanation = []
                         for idx in top_indices:
-                            # Only show top 5 non‑zero contributions
+                            # Only show top 5 non-zero contributions
                             if len(explanation) >= 5:
                                 break
                             if contributions[idx] != 0:
@@ -100,7 +100,7 @@ else:
                 explanation = None
 
             if explanation:
-                # Build a colour‑coded string highlighting important words.  The more
+                # Build a colour-coded string highlighting important words.  The more
                 # intense the red colour, the higher the contribution.  Only words in
                 # the explanation list are coloured; others remain default.
                 token_scores = {w.lower(): abs(s) for w, s in explanation}
@@ -125,5 +125,5 @@ else:
             else:
                 st.info(
                     "Không thể giải thích dự đoán cho cấu hình hiện tại. "
-                    "Hiện chỉ hỗ trợ Logistic Regression hoặc Naive Bayes với BoW/TF‑IDF."
+                    "Hiện chỉ hỗ trợ Logistic Regression hoặc Naive Bayes với BoW/TF-IDF."
                 )
