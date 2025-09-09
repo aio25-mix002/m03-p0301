@@ -15,7 +15,7 @@ st.write(
     "Nhập tóm tắt bài báo khoa học và nhấn **Dự đoán** để nhận chủ đề dự đoán."
 )
 
-if "model" not in st.session_state or "vectorizer" not in st.session_state:
+if "trained_model" not in st.session_state or "vectorizer" not in st.session_state:
     st.warning(
         "Bạn cần huấn luyện mô hình trước khi dự đoán. "
         "Hãy tới tab **Experiments** để chọn phương pháp và mô hình rồi huấn luyện."
@@ -33,7 +33,7 @@ else:
             cleaned = re.sub(r"\s+", " ", cleaned).strip().lower()
 
             vectoriser = st.session_state["vectorizer"]
-            model = st.session_state["model"]
+            model = st.session_state["trained_model"]
             vec = vectoriser.transform([cleaned])
 
             # Handle dense requirement for GaussianNB
