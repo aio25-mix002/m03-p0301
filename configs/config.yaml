@@ -5,7 +5,8 @@ random_state: 42
 data:
     # External data from third-party sources.
     external_dir: data/external
-    external_huggingface_dir: data/external/huggingface
+    external_huggingface_dir: 'D:\test-cache\huggingface'
+    # external_huggingface_dir: data/external/huggingface
 
     # Your own data
     raw_dir: data/raw
