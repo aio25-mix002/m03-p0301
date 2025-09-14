@@ -6,10 +6,11 @@ from datasets import load_dataset
 from googletrans import Translator
 from sklearn.model_selection import train_test_split
 import collections
-
+from src.configuration.configuration_manager import ConfigurationManager
+SETTINGS = ConfigurationManager.load()
 # --- Bước 1: Tải và chuẩn bị dữ liệu gốc ---
 # Tải dữ liệu từ Hugging Face
-raw = load_dataset("UniverseTBD/arxiv-abstracts-large", split="train")
+raw = load_dataset("UniverseTBD/arxiv-abstracts-large", split="train", cache_dir=SETTINGS.data.external_huggingface_dir)
 
 # Lọc lấy 5 lớp chính và các bản ghi đơn nhãn
 def filter_single_label(ex):
